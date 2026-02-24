@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Best-sellers: Domésticos vs. Internacionais</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #f4f2ee;
+      color: #2d2d2d;
+      padding: 28px 24px 48px;
+    }
+
+    h1 { font-size: 1.45rem; font-weight: 700; color: #1a1a2e; }
+    .subtitle { font-size: 0.88rem; color: #666; margin-top: 5px; }
+
+    .controls {
+      display: flex; align-items: center; gap: 10px;
+      margin: 18px 0 16px; flex-wrap: wrap;
+    }
+    .btn {
+      padding: 5px 16px; border-radius: 20px;
+      border: 1.5px solid #bbb; background: white;
+      cursor: pointer; font-size: 0.8rem; font-weight: 600;
+      transition: all .15s; color: #555;
+    }
+    .btn:hover { border-color: #457b9d; color: #457b9d; }
+    .btn.active { background: #457b9d; color: white; border-color: #457b9d; }
+
+    .slider-wrap {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 0.8rem; color: #666;
+    }
+    input[type=range] { width: 110px; accent-color: #457b9d; }
+
+    .legend { display: flex; gap: 14px; margin-left: auto; }
+    .leg { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #555; }
+    .swatch { width: 13px; height: 13px; border-radius: 3px; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 18px 20px;
+      box-shadow: 0 1px 6px rgba(0,0,0,.07);
+      overflow-x: auto;
+    }
+
+    .side-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 1px 6px rgba(0,0,0,.07);
+      position: sticky;
+      top: 24px;
+    }
+    .side-card h3 { font-size: 1rem; color: #1a1a2e; margin-bottom: 2px; }
+    .side-hint { font-size: 0.75rem; color: #aaa; margin-bottom: 14px; }
+    #side-stats {
+      font-size: 0.8rem; color: #555;
+      margin-bottom: 14px; line-height: 1.7;
+    }
+
+    .tooltip {
+      position: fixed; pointer-events: none; opacity: 0;
+      background: rgba(20,20,35,0.9); color: #f5f5f5;
+      padding: 9px 13px; border-radius: 8px;
+      font-size: 0.78rem; line-height: 1.65;
+      box-shadow: 0 4px 18px rgba(0,0,0,.28);
+      transition: opacity .12s; z-index: 999;
+      max-width: 210px;
+    }
+
+    footer {
+      margin-top: 28px; font-size: 0.72rem;
+      color: #aaa; text-align: center;
+    }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .side-card { position: static; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>Best-sellers: Autores Domésticos vs. Internacionais</h1>
+<p class="subtitle">Proporção de entradas nas listas de best-sellers com autores do próprio país &nbsp;(2013 – 2022)</p>
+
+<div class="controls">
+  <button class="btn active" id="sort-pct">% Doméstico ↕</button>
+  <button class="btn" id="sort-az">A – Z</button>
+  <div class="slider-wrap">
+    <label for="min-n">Mín. entradas:</label>
+    <input type="range" id="min-n" min="10" max="300" step="10" value="10" />
+    <span id="min-n-val" style="min-width:34px">≥ 10</span>
+  </div>
+  <div class="legend">
+    <div class="leg"><div class="swatch" style="background:#e76f51"></div>Doméstico</div>
+    <div class="leg"><div class="swatch" style="background:#457b9d"></div>Internacional</div>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="card" id="chart-wrap"></div>
+  <div class="side-card">
+    <h3 id="trend-title">Selecione um país</h3>
+    <p class="side-hint" id="side-hint">Clique em uma barra para ver a evolução ao longo do tempo</p>
+    <div id="side-stats"></div>
+    <div id="trend-chart"></div>
+  </div>
+</div>
+
+<footer>
+  Fonte: international_bestsellers.csv &nbsp;·&nbsp;
+  Um livro é "doméstico" se ao menos um autor tem a mesma nacionalidade do país da lista.
+</footer>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ── Embedded data ─────────────────────────────────────────────────────────────
+const DATA = [{"country": "Argentina", "total": 80, "domestic": 25, "international": 55, "pct_domestic": 31.2, "trend": [{"year": 2013, "pct": 0.0, "total": 10}, {"year": 2014, "pct": 0.0, "total": 10}, {"year": 2015, "pct": 40.0, "total": 10}, {"year": 2016, "pct": 40.0, "total": 10}, {"year": 2017, "pct": 30.0, "total": 10}, {"year": 2019, "pct": 40.0, "total": 10}, {"year": 2020, "pct": 30.0, "total": 10}, {"year": 2021, "pct": 70.0, "total": 10}]}, {"country": "Australia", "total": 90, "domestic": 33, "international": 57, "pct_domestic": 36.7, "trend": [{"year": 2014, "pct": 20.0, "total": 10}, {"year": 2015, "pct": 30.0, "total": 10}, {"year": 2016, "pct": 60.0, "total": 10}, {"year": 2017, "pct": 50.0, "total": 10}, {"year": 2018, "pct": 50.0, "total": 10}, {"year": 2019, "pct": 40.0, "total": 10}, {"year": 2020, "pct": 40.0, "total": 10}, {"year": 2021, "pct": 20.0, "total": 10}, {"year": 2022, "pct": 20.0, "total": 10}]}, {"country": "Austria", "total": 50, "domestic": 7, "international": 43, "pct_domestic": 14.0, "trend": [{"year": 2014, "pct": 10.0, "total": 10}, {"year": 2015, "pct": 10.0, "total": 10}, {"year": 2016, "pct": 10.0, "total": 10}, {"year": 2017, "pct": 30.0, "total": 10}, {"year": 2018, "pct": 10.0, "total": 10}]}, {"country": "Brazil", "total": 100, "domestic": 19, "international": 81, "pct_domestic": 19.0, "trend": [{"year": 2014, "pct": 15.0, "total": 20}, {"year": 2015, "pct": 20.0, "total": 10}, {"year": 2016, "pct": 20.0, "total": 10}, {"year": 2017, "pct": 30.0, "total": 10}, {"year": 2018, "pct": 20.0, "total": 10}, {"year": 2019, "pct": 20.0, "total": 10}, {"year": 2020, "pct": 20.0, "total": 10}, {"year": 2021, "pct": 10.0, "total": 10}, {"year": 2022, "pct": 20.0, "total": 10}]}, {"country": "Bulgaria", "total": 40, "domestic": 20, "international": 20, "pct_domestic": 50.0, "trend": [{"year": 2018, "pct": 20.0, "total": 10}, {"year": 2019, "pct": 60.0, "total": 10}, {"year": 2021, "pct": 50.0, "total": 10}, {"year": 2022, "pct": 70.0, "total": 10}]}, {"country": "Canada", "total": 60, "domestic": 14, "international": 46, "pct_domestic": 23.3, "trend": [{"year": 2015, "pct": 30.0, "total": 20}, {"year": 2016, "pct": 30.0, "total": 10}, {"year": 2017, "pct": 30.0, "total": 10}, {"year": 2018, "pct": 10.0, "total": 10}, {"year": 2019, "pct": 10.0, "total": 10}]}, {"country": "China", "total": 60, "domestic": 34, "international": 26, "pct_domestic": 56.7, "trend": [{"year": 2014, "pct": 70.0, "total": 10}, {"year": 2015, "pct": 50.0, "total": 10}, {"year": 2016, "pct": 40.0, "total": 10}, {"year": 2017, "pct": 40.0, "total": 10}, {"year": 2018, "pct": 70.0, "total": 10}, {"year": 2019, "pct": 70.0, "total": 10}]}, {"country": "Czechia", "total": 50, "domestic": 10, "international": 40, "pct_domestic": 20.0, "trend": [{"year": 2018, "pct": 10.0, "total": 10}, {"year": 2019, "pct": 10.0, "total": 10}, {"year": 2020, "pct": 30.0, "total": 10}, {"year": 2021, "pct": 30.0, "total": 10}, {"year": 2022, "pct": 20.0, "total": 10}]}, {"country": "Dominican Republic", "total": 30, "domestic": 5, "international": 25, "pct_domestic": 16.7, "trend": [{"year": 2018, "pct": 10.0, "total": 10}, {"year": 2019, "pct": 40.0, "total": 10}, {"year": 2020, "pct": 0.0, "total": 10}]}, {"country": "Egypt", "total": 20, "domestic": 13, "international": 7, "pct_domestic": 65.0, "trend": [{"year": 2013, "pct": 80.0, "total": 10}, {"year": 2022, "pct": 50.0, "total": 10}]}, {"country": "Finland", "total": 60, "domestic": 28, "international": 32, "pct_domestic": 46.7, "trend": [{"year": 2014, "pct": 10.0, "total": 10}, {"year": 2015, "pct": 40.0, "total": 10}, {"year": 2016, "pct": 70.0, "total": 10}, {"year": 2017, "pct": 30.0, "total": 10}, {"year": 2018, "pct": 60.0, "total": 10}, {"year": 2019, "pct": 70.0, "total": 10}]}, {"country": "France", "total": 1130, "domestic": 767, "international": 363, "pct_domestic": 67.9, "trend": [{"year": 2013, "pct": 38.3, "total": 60}, {"year": 2014, "pct": 64.2, "total": 120}, {"year": 2015, "pct": 59.2, "total": 120}, {"year": 2016, "pct": 65.0, "total": 120}, {"year": 2017, "pct": 61.7, "total": 120}, {"year": 2018, "pct": 69.2, "total": 120}, {"year": 2019, "pct": 75.8, "total": 120}, {"year": 2020, "pct": 75.0, "total": 120}, {"year": 2021, "pct": 74.2, "total": 120}, {"year": 2022, "pct": 82.7, "total": 110}]}, {"country": "Germany", "total": 1140, "domestic": 530, "international": 610, "pct_domestic": 46.5, "trend": [{"year": 2013, "pct": 28.6, "total": 70}, {"year": 2014, "pct": 33.3, "total": 120}, {"year": 2015, "pct": 34.2, "total": 120}, {"year": 2016, "pct": 55.0, "total": 120}, {"year": 2017, "pct": 34.2, "total": 120}, {"year": 2018, "pct": 53.3, "total": 120}, {"year": 2019, "pct": 50.8, "total": 120}, {"year": 2020, "pct": 40.8, "total": 120}, {"year": 2021, "pct": 63.3, "total": 120}, {"year": 2022, "pct": 65.5, "total": 110}]}, {"country": "Greece", "total": 90, "domestic": 26, "international": 64, "pct_domestic": 28.9, "trend": [{"year": 2014, "pct": 10.0, "total": 10}, {"year": 2015, "pct": 40.0, "total": 10}, {"year": 2016, "pct": 20.0, "total": 10}, {"year": 2017, "pct": 30.0, "total": 10}, {"year": 2018, "pct": 60.0, "total": 10}, {"year": 2019, "pct": 40.0, "total": 10}, {"year": 2020, "pct": 20.0, "total": 10}, {"year": 2021, "pct": 20.0, "total": 10}, {"year": 2022, "pct": 20.0, "total": 10}]}, {"country": "Hungary", "total": 60, "domestic": 30, "international": 30, "pct_domestic": 50.0, "trend": [{"year": 2015, "pct": 50.0, "total": 10}, {"year": 2016, "pct": 50.0, "total": 10}, {"year": 2017, "pct": 40.0, "total": 10}, {"year": 2018, "pct": 80.0, "total": 10}, {"year": 2021, "pct": 50.0, "total": 10}, {"year": 2022, "pct": 30.0, "total": 10}]}, {"country": "Iceland", "total": 10, "domestic": 10, "international": 0, "pct_domestic": 100.0, "trend": [{"year": 2022, "pct": 100.0, "total": 10}]}, {"country": "India", "total": 50, "domestic": 29, "international": 21, "pct_domestic": 58.0, "trend": [{"year": 2014, "pct": 80.0, "total": 10}, {"year": 2015, "pct": 80.0, "total": 10}, {"year": 2020, "pct": 30.0, "total": 10}, {"year": 2021, "pct": 70.0, "total": 10}, {"year": 2022, "pct": 30.0, "total": 10}]}, {"country": "Ireland", "total": 90, "domestic": 20, "international": 70, "pct_domestic": 22.2, "trend": [{"year": 2014, "pct": 20.0, "total": 20}, {"year": 2016, "pct": 10.0, "total": 10}, {"year": 2017, "pct": 10.0, "total": 20}, {"year": 2018, "pct": 20.0, "total": 10}, {"year": 2020, "pct": 40.0, "total": 10}, {"year": 2021, "pct": 10.0, "total": 10}, {"year": 2022, "pct": 60.0, "total": 10}]}, {"country": "Israel", "total": 70, "domestic": 15, "international": 55, "pct_domestic": 21.4, "trend": [{"year": 2014, "pct": 40.0, "total": 10}, {"year": 2015, "pct": 40.0, "total": 10}, {"year": 2018, "pct": 10.0, "total": 10}, {"year": 2019, "pct": 40.0, "total": 10}, {"year": 2020, "pct": 5.0, "total": 20}, {"year": 2021, "pct": 10.0, "total": 10}]}, {"country": "Italy", "total": 1140, "domestic": 862, "international": 278, "pct_domestic": 75.6, "trend": [{"year": 2013, "pct": 100.0, "total": 70}, {"year": 2014, "pct": 95.8, "total": 120}, {"year": 2015, "pct": 100.0, "total": 120}, {"year": 2016, "pct": 95.0, "total": 120}, {"year": 2017, "pct": 95.8, "total": 120}, {"year": 2018, "pct": 53.3, "total": 120}, {"year": 2019, "pct": 65.0, "total": 120}, {"year": 2020, "pct": 64.2, "total": 120}, {"year": 2021, "pct": 41.7, "total": 120}, {"year": 2022, "pct": 53.6, "total": 110}]}, {"country": "Japan", "total": 20, "domestic": 18, "international": 2, "pct_domestic": 90.0, "trend": [{"year": 2016, "pct": 80.0, "total": 10}, {"year": 2017, "pct": 100.0, "total": 10}]}, {"country": "Malaysia", "total": 70, "domestic": 16, "international": 54, "pct_domestic": 22.9, "trend": [{"year": 2014, "pct": 40.0, "total": 10}, {"year": 2015, "pct": 20.0, "total": 10}, {"year": 2016, "pct": 0.0, "total": 10}, {"year": 2017, "pct": 0.0, "total": 10}, {"year": 2018, "pct": 30.0, "total": 10}, {"year": 2020, "pct": 50.0, "total": 10}, {"year": 2021, "pct": 20.0, "total": 10}]}, {"country": "Malta", "total": 10, "domestic": 0, "international": 10, "pct_domestic": 0.0, "trend": [{"year": 2014, "pct": 0.0, "total": 10}]}, {"country": "Mexico", "total": 70, "domestic": 15, "international": 55, "pct_domestic": 21.4, "trend": [{"year": 2013, "pct": 10.0, "total": 10}, {"year": 2014, "pct": 30.0, "total": 10}, {"year": 2018, "pct": 30.0, "total": 10}, {"year": 2019, "pct": 30.0, "total": 10}, {"year": 2020, "pct": 20.0, "total": 10}, {"year": 2021, "pct": 20.0, "total": 10}, {"year": 2022, "pct": 10.0, "total": 10}]}, {"country": "Netherlands", "total": 60, "domestic": 21, "international": 39, "pct_domestic": 35.0, "trend": [{"year": 2013, "pct": 30.0, "total": 10}, {"year": 2015, "pct": 40.0, "total": 10}, {"year": 2016, "pct": 50.0, "total": 10}, {"year": 2017, "pct": 50.0, "total": 10}, {"year": 2018, "pct": 20.0, "total": 10}, {"year": 2019, "pct": 20.0, "total": 10}]}, {"country": "New Zealand", "total": 40, "domestic": 5, "international": 35, "pct_domestic": 12.5, "trend": [{"year": 2019, "pct": 20.0, "total": 10}, {"year": 2020, "pct": 20.0, "total": 10}, {"year": 2021, "pct": 10.0, "total": 10}, {"year": 2022, "pct": 0.0, "total": 10}]}, {"country": "Nigeria", "total": 10, "domestic": 5, "international": 5, "pct_domestic": 50.0, "trend": [{"year": 2018, "pct": 50.0, "total": 10}]}, {"country": "Norway", "total": 70, "domestic": 38, "international": 32, "pct_domestic": 54.3, "trend": [{"year": 2013, "pct": 70.0, "total": 10}, {"year": 2014, "pct": 50.0, "total": 10}, {"year": 2015, "pct": 40.0, "total": 10}, {"year": 2016, "pct": 60.0, "total": 10}, {"year": 2017, "pct": 60.0, "total": 10}, {"year": 2019, "pct": 60.0, "total": 10}, {"year": 2022, "pct": 40.0, "total": 10}]}, {"country": "Philippines", "total": 30, "domestic": 1, "international": 29, "pct_domestic": 3.3, "trend": [{"year": 2020, "pct": 10.0, "total": 10}, {"year": 2021, "pct": 0.0, "total": 10}, {"year": 2022, "pct": 0.0, "total": 10}]}, {"country": "Poland", "total": 90, "domestic": 39, "international": 51, "pct_domestic": 43.3, "trend": [{"year": 2014, "pct": 40.0, "total": 10}, {"year": 2015, "pct": 60.0, "total": 10}, {"year": 2016, "pct": 40.0, "total": 20}, {"year": 2017, "pct": 40.0, "total": 10}, {"year": 2019, "pct": 60.0, "total": 10}, {"year": 2020, "pct": 30.0, "total": 10}, {"year": 2021, "pct": 40.0, "total": 10}, {"year": 2022, "pct": 40.0, "total": 10}]}, {"country": "Portugal", "total": 60, "domestic": 19, "international": 41, "pct_domestic": 31.7, "trend": [{"year": 2015, "pct": 50.0, "total": 10}, {"year": 2016, "pct": 30.0, "total": 20}, {"year": 2017, "pct": 35.0, "total": 20}, {"year": 2018, "pct": 10.0, "total": 10}]}, {"country": "Romania", "total": 40, "domestic": 6, "international": 34, "pct_domestic": 15.0, "trend": [{"year": 2015, "pct": 0.0, "total": 10}, {"year": 2020, "pct": 10.0, "total": 10}, {"year": 2021, "pct": 30.0, "total": 10}, {"year": 2022, "pct": 20.0, "total": 10}]}, {"country": "Russia", "total": 80, "domestic": 26, "international": 54, "pct_domestic": 32.5, "trend": [{"year": 2013, "pct": 50.0, "total": 20}, {"year": 2014, "pct": 60.0, "total": 10}, {"year": 2018, "pct": 40.0, "total": 10}, {"year": 2019, "pct": 20.0, "total": 10}, {"year": 2020, "pct": 20.0, "total": 20}, {"year": 2021, "pct": 0.0, "total": 10}]}, {"country": "Singapore", "total": 50, "domestic": 3, "international": 47, "pct_domestic": 6.0, "trend": [{"year": 2018, "pct": 20.0, "total": 10}, {"year": 2019, "pct": 0.0, "total": 10}, {"year": 2020, "pct": 10.0, "total": 10}, {"year": 2021, "pct": 0.0, "total": 10}, {"year": 2022, "pct": 0.0, "total": 10}]}, {"country": "South Africa", "total": 80, "domestic": 21, "international": 59, "pct_domestic": 26.2, "trend": [{"year": 2014, "pct": 30.0, "total": 10}, {"year": 2015, "pct": 40.0, "total": 10}, {"year": 2016, "pct": 20.0, "total": 10}, {"year": 2017, "pct": 40.0, "total": 10}, {"year": 2018, "pct": 30.0, "total": 10}, {"year": 2019, "pct": 0.0, "total": 10}, {"year": 2021, "pct": 20.0, "total": 10}, {"year": 2022, "pct": 30.0, "total": 10}]}, {"country": "South Korea", "total": 60, "domestic": 23, "international": 37, "pct_domestic": 38.3, "trend": [{"year": 2013, "pct": 60.0, "total": 10}, {"year": 2014, "pct": 20.0, "total": 10}, {"year": 2015, "pct": 10.0, "total": 10}, {"year": 2016, "pct": 40.0, "total": 10}, {"year": 2017, "pct": 60.0, "total": 10}, {"year": 2018, "pct": 40.0, "total": 10}]}, {"country": "Spain", "total": 1139, "domestic": 727, "international": 412, "pct_domestic": 63.8, "trend": [{"year": 2013, "pct": 41.4, "total": 70}, {"year": 2014, "pct": 43.3, "total": 120}, {"year": 2015, "pct": 51.7, "total": 120}, {"year": 2016, "pct": 58.0, "total": 119}, {"year": 2017, "pct": 65.0, "total": 120}, {"year": 2018, "pct": 67.5, "total": 120}, {"year": 2019, "pct": 70.8, "total": 120}, {"year": 2020, "pct": 74.2, "total": 120}, {"year": 2021, "pct": 81.7, "total": 120}, {"year": 2022, "pct": 76.4, "total": 110}]}, {"country": "Sweden", "total": 60, "domestic": 19, "international": 41, "pct_domestic": 31.7, "trend": [{"year": 2015, "pct": 60.0, "total": 10}, {"year": 2016, "pct": 30.0, "total": 10}, {"year": 2017, "pct": 30.0, "total": 10}, {"year": 2020, "pct": 10.0, "total": 10}, {"year": 2021, "pct": 20.0, "total": 10}, {"year": 2022, "pct": 40.0, "total": 10}]}, {"country": "Switzerland", "total": 60, "domestic": 11, "international": 49, "pct_domestic": 18.3, "trend": [{"year": 2014, "pct": 5.0, "total": 20}, {"year": 2015, "pct": 30.0, "total": 10}, {"year": 2016, "pct": 20.0, "total": 10}, {"year": 2017, "pct": 10.0, "total": 10}, {"year": 2019, "pct": 40.0, "total": 10}]}, {"country": "Taiwan", "total": 20, "domestic": 7, "international": 13, "pct_domestic": 35.0, "trend": [{"year": 2014, "pct": 20.0, "total": 10}, {"year": 2022, "pct": 50.0, "total": 10}]}, {"country": "Thailand", "total": 40, "domestic": 0, "international": 40, "pct_domestic": 0.0, "trend": [{"year": 2019, "pct": 0.0, "total": 10}, {"year": 2020, "pct": 0.0, "total": 10}, {"year": 2021, "pct": 0.0, "total": 10}, {"year": 2022, "pct": 0.0, "total": 10}]}, {"country": "Turkey", "total": 80, "domestic": 44, "international": 36, "pct_domestic": 55.0, "trend": [{"year": 2014, "pct": 60.0, "total": 10}, {"year": 2015, "pct": 60.0, "total": 10}, {"year": 2016, "pct": 60.0, "total": 10}, {"year": 2017, "pct": 60.0, "total": 10}, {"year": 2018, "pct": 60.0, "total": 10}, {"year": 2019, "pct": 60.0, "total": 10}, {"year": 2020, "pct": 40.0, "total": 10}, {"year": 2021, "pct": 40.0, "total": 10}]}, {"country": "Ukraine", "total": 30, "domestic": 6, "international": 24, "pct_domestic": 20.0, "trend": [{"year": 2019, "pct": 30.0, "total": 10}, {"year": 2020, "pct": 10.0, "total": 10}, {"year": 2021, "pct": 20.0, "total": 10}]}, {"country": "United Arab Emirates", "total": 80, "domestic": 0, "international": 80, "pct_domestic": 0.0, "trend": [{"year": 2015, "pct": 0.0, "total": 10}, {"year": 2016, "pct": 0.0, "total": 10}, {"year": 2017, "pct": 0.0, "total": 10}, {"year": 2018, "pct": 0.0, "total": 10}, {"year": 2019, "pct": 0.0, "total": 10}, {"year": 2020, "pct": 0.0, "total": 10}, {"year": 2021, "pct": 0.0, "total": 10}, {"year": 2022, "pct": 0.0, "total": 10}]}, {"country": "United States", "total": 1140, "domestic": 970, "international": 170, "pct_domestic": 85.1, "trend": [{"year": 2013, "pct": 84.3, "total": 70}, {"year": 2014, "pct": 85.8, "total": 120}, {"year": 2015, "pct": 84.2, "total": 120}, {"year": 2016, "pct": 85.8, "total": 120}, {"year": 2017, "pct": 82.5, "total": 120}, {"year": 2018, "pct": 94.2, "total": 120}, {"year": 2019, "pct": 87.5, "total": 120}, {"year": 2020, "pct": 81.7, "total": 120}, {"year": 2021, "pct": 81.7, "total": 120}, {"year": 2022, "pct": 82.7, "total": 110}]}];
+
+// ── Colours ───────────────────────────────────────────────────────────────────
+const C_DOM  = "#e76f51";
+const C_INTL = "#457b9d";
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let sortMode = "pct";
+let minN     = 10;
+let selected = null;
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+const tip = d3.select("#tooltip");
+
+function showTip(event, d) {
+  tip.style("opacity", 1)
+    .html(
+      `<strong>${d.country}</strong><br>` +
+      `<span style="color:#f4a488">■</span> Doméstico: ${d.domestic} &nbsp;<em>(${d.pct_domestic.toFixed(1)}%)</em><br>` +
+      `<span style="color:#8ab4cc">■</span> Internacional: ${d.international} &nbsp;<em>(${(100-d.pct_domestic).toFixed(1)}%)</em><br>` +
+      `Total: ${d.total} entradas`
+    )
+    .style("left", (event.clientX + 14) + "px")
+    .style("top",  (event.clientY - 10) + "px");
+}
+function hideTip() { tip.style("opacity", 0); }
+
+// ── Filter + sort ─────────────────────────────────────────────────────────────
+function getFiltered() {
+  let d = DATA.filter(r => r.total >= minN);
+  if (sortMode === "pct")
+    d.sort((a, b) => a.pct_domestic - b.pct_domestic);   // ascending → highest at bottom
+  else
+    d.sort((a, b) => b.country.localeCompare(a.country)); // A-Z top to bottom
+  return d;
+}
+
+// ── Main bar chart ────────────────────────────────────────────────────────────
+const BAR_H = 19;
+const GAP   = 4;
+const ML    = { top: 8, right: 66, bottom: 36, left: 152 };
+const IW    = 560;
+
+function drawChart() {
+  const data = getFiltered();
+  const n    = data.length;
+  const IH   = n * (BAR_H + GAP);
+
+  d3.select("#chart-wrap").select("svg").remove();
+
+  const svg = d3.select("#chart-wrap")
+    .append("svg")
+    .attr("width",  IW + ML.left + ML.right)
+    .attr("height", IH + ML.top  + ML.bottom)
+    .style("max-width", "100%");
+
+  const g = svg.append("g")
+    .attr("transform", `translate(${ML.left},${ML.top})`);
+
+  const x = d3.scaleLinear().domain([0, 100]).range([0, IW]);
+  const y = d3.scaleBand()
+    .domain(data.map(d => d.country))
+    .range([0, IH])
+    .paddingInner(GAP / (BAR_H + GAP));
+
+  // ── Gridlines ──
+  g.append("g")
+    .selectAll("line.grid")
+    .data([0, 25, 50, 75, 100])
+    .join("line")
+      .attr("x1", v => x(v)).attr("x2", v => x(v))
+      .attr("y1", 0).attr("y2", IH)
+      .attr("stroke", v => v === 50 ? "#d0d0d0" : "#ebebeb")
+      .attr("stroke-dasharray", v => v === 50 ? "5,3" : null)
+      .attr("stroke-width", v => v === 50 ? 1.3 : 1);
+
+  // ── Bar groups ──
+  const bg = g.selectAll(".bg")
+    .data(data, d => d.country)
+    .join("g")
+      .attr("class", "bg")
+      .attr("transform", d => `translate(0,${y(d.country)})`)
+      .style("cursor", "pointer")
+      .on("mousemove", (ev, d) => showTip(ev, d))
+      .on("mouseleave", hideTip)
+      .on("click", (ev, d) => {
+        selected = (selected === d.country) ? null : d.country;
+        updateFade();
+        selected ? drawTrend(d) : clearTrend();
+      });
+
+  // Domestic rect
+  bg.append("rect")
+    .attr("x", 0).attr("y", 0)
+    .attr("width",  d => x(d.pct_domestic))
+    .attr("height", y.bandwidth())
+    .attr("fill", C_DOM).attr("rx", 3);
+
+  // International rect
+  bg.append("rect")
+    .attr("x",     d => x(d.pct_domestic)).attr("y", 0)
+    .attr("width", d => x(100 - d.pct_domestic))
+    .attr("height", y.bandwidth())
+    .attr("fill", C_INTL).attr("rx", 3);
+
+  // % label – domestic side
+  bg.filter(d => d.pct_domestic > 11)
+    .append("text")
+    .attr("x", d => x(d.pct_domestic) / 2)
+    .attr("y", y.bandwidth() / 2).attr("dy", "0.35em")
+    .attr("text-anchor", "middle")
+    .attr("fill", "white").attr("font-size", "10.5px").attr("font-weight", "600")
+    .attr("pointer-events", "none")
+    .text(d => `${d.pct_domestic.toFixed(0)}%`);
+
+  // % label – international side
+  bg.filter(d => (100 - d.pct_domestic) > 11)
+    .append("text")
+    .attr("x", d => x(d.pct_domestic) + x(100 - d.pct_domestic) / 2)
+    .attr("y", y.bandwidth() / 2).attr("dy", "0.35em")
+    .attr("text-anchor", "middle")
+    .attr("fill", "white").attr("font-size", "10.5px").attr("font-weight", "600")
+    .attr("pointer-events", "none")
+    .text(d => `${(100 - d.pct_domestic).toFixed(0)}%`);
+
+  // n= label on right
+  bg.append("text")
+    .attr("x", IW + 6).attr("y", y.bandwidth() / 2).attr("dy", "0.35em")
+    .attr("fill", "#c0c0c0").attr("font-size", "9.5px")
+    .attr("pointer-events", "none")
+    .text(d => `n=${d.total}`);
+
+  // ── Y axis (country labels) ──
+  g.append("g")
+    .call(d3.axisLeft(y).tickSize(0).tickPadding(8))
+    .call(ag => {
+      ag.select(".domain").remove();
+      ag.selectAll("text")
+        .attr("font-size", "11.5px")
+        .attr("fill", d => d === selected ? "#1a1a2e" : "#444")
+        .attr("font-weight", d => d === selected ? "700" : "400");
+    });
+
+  // ── X axis ──
+  g.append("g")
+    .attr("transform", `translate(0,${IH})`)
+    .call(
+      d3.axisBottom(x)
+        .tickValues([0, 25, 50, 75, 100])
+        .tickFormat(v => v + "%")
+        .tickSize(4)
+    )
+    .call(ag => {
+      ag.select(".domain").attr("stroke", "#ddd");
+      ag.selectAll("text").attr("font-size", "10px").attr("fill", "#888");
+      ag.selectAll(".tick line").attr("stroke", "#ddd");
+    });
+
+  updateFade();
+}
+
+function updateFade() {
+  d3.selectAll(".bg")
+    .style("opacity", d => selected === null || d.country === selected ? 1 : 0.3);
+}
+
+// ── Trend chart ───────────────────────────────────────────────────────────────
+function clearTrend() {
+  document.getElementById("trend-title").textContent = "Selecione um país";
+  document.getElementById("side-hint").style.display = "";
+  document.getElementById("side-stats").innerHTML = "";
+  document.getElementById("trend-chart").innerHTML = "";
+}
+
+function drawTrend(d) {
+  document.getElementById("trend-title").textContent = d.country;
+  document.getElementById("side-hint").style.display = "none";
+  document.getElementById("side-stats").innerHTML =
+    `<strong style="color:${C_DOM}">${d.pct_domestic.toFixed(1)}%</strong> doméstico &nbsp;·&nbsp; ` +
+    `<strong style="color:${C_INTL}">${(100 - d.pct_domestic).toFixed(1)}%</strong> internacional<br>` +
+    `${d.total} entradas no período`;
+
+  const el = document.getElementById("trend-chart");
+  el.innerHTML = "";
+
+  if (!d.trend || d.trend.length < 2) {
+    el.innerHTML =
+      '<p style="color:#ccc;font-size:0.78rem;margin-top:8px">Dados insuficientes para curva temporal.</p>';
+    return;
+  }
+
+  const W = 258, H = 165;
+  const m = { top: 14, right: 12, bottom: 28, left: 38 };
+
+  const svg = d3.select(el)
+    .append("svg")
+    .attr("width",  W + m.left + m.right)
+    .attr("height", H + m.top  + m.bottom);
+
+  const gg = svg.append("g").attr("transform", `translate(${m.left},${m.top})`);
+
+  const xs = d3.scaleLinear().domain(d3.extent(d.trend, t => t.year)).range([0, W]);
+  const ys = d3.scaleLinear().domain([0, 100]).range([H, 0]).nice();
+
+  // Horizontal gridlines
+  gg.append("g")
+    .selectAll("line.hg")
+    .data(ys.ticks(4))
+    .join("line")
+      .attr("x1", 0).attr("x2", W)
+      .attr("y1", v => ys(v)).attr("y2", v => ys(v))
+      .attr("stroke", "#f0f0f0");
+
+  // 50% reference
+  gg.append("line")
+    .attr("x1", 0).attr("x2", W)
+    .attr("y1", ys(50)).attr("y2", ys(50))
+    .attr("stroke", "#ddd").attr("stroke-dasharray", "5,3").attr("stroke-width", 1.2);
+
+  gg.append("text")
+    .attr("x", W).attr("y", ys(50) - 4)
+    .attr("text-anchor", "end")
+    .attr("fill", "#ccc").attr("font-size", "9px")
+    .text("50%");
+
+  // Area fill
+  gg.append("path")
+    .datum(d.trend)
+    .attr("fill", C_DOM).attr("opacity", 0.12)
+    .attr("d",
+      d3.area().x(t => xs(t.year)).y0(H).y1(t => ys(t.pct)).curve(d3.curveMonotoneX)
+    );
+
+  // Line
+  gg.append("path")
+    .datum(d.trend)
+    .attr("fill", "none")
+    .attr("stroke", C_DOM).attr("stroke-width", 2.2)
+    .attr("d",
+      d3.line().x(t => xs(t.year)).y(t => ys(t.pct)).curve(d3.curveMonotoneX)
+    );
+
+  // Dots
+  gg.selectAll("circle")
+    .data(d.trend)
+    .join("circle")
+      .attr("cx", t => xs(t.year)).attr("cy", t => ys(t.pct))
+      .attr("r", 4)
+      .attr("fill", C_DOM).attr("stroke", "white").attr("stroke-width", 1.8)
+      .style("cursor", "crosshair")
+      .on("mousemove", (ev, t) => {
+        tip.style("opacity", 1)
+          .html(`<strong>${t.year}</strong><br>Doméstico: ${t.pct.toFixed(1)}%<br>n=${t.total}`)
+          .style("left", (ev.clientX + 14) + "px")
+          .style("top",  (ev.clientY - 10) + "px");
+      })
+      .on("mouseleave", hideTip);
+
+  const allYears = d.trend.map(t => t.year);
+  const manyYears = allYears.length > 6;
+
+  // X axis
+  gg.append("g")
+    .attr("transform", `translate(0,${H})`)
+    .call(
+      d3.axisBottom(xs)
+        .tickValues(allYears)
+        .tickFormat(d3.format("d"))
+        .tickSize(3)
+    )
+    .call(ag => {
+      ag.select(".domain").attr("stroke", "#ddd");
+      ag.selectAll(".tick line").attr("stroke", "#ddd");
+      ag.selectAll("text")
+        .attr("font-size", "9.5px").attr("fill", "#999")
+        .style("text-anchor", manyYears ? "end" : "middle")
+        .attr("transform", manyYears ? "rotate(-40)" : null);
+    });
+
+  // Y axis
+  gg.append("g")
+    .call(d3.axisLeft(ys).ticks(4).tickFormat(v => v + "%").tickSize(3))
+    .call(ag => {
+      ag.select(".domain").attr("stroke", "#ddd");
+      ag.selectAll(".tick line").attr("stroke", "#ddd");
+      ag.selectAll("text").attr("font-size", "9.5px").attr("fill", "#999");
+    });
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+document.getElementById("sort-pct").addEventListener("click", () => {
+  sortMode = "pct";
+  document.getElementById("sort-pct").classList.add("active");
+  document.getElementById("sort-az").classList.remove("active");
+  drawChart();
+});
+
+document.getElementById("sort-az").addEventListener("click", () => {
+  sortMode = "az";
+  document.getElementById("sort-az").classList.add("active");
+  document.getElementById("sort-pct").classList.remove("active");
+  drawChart();
+});
+
+document.getElementById("min-n").addEventListener("input", function () {
+  minN = +this.value;
+  document.getElementById("min-n-val").textContent = `\u2265 ${this.value}`;
+  drawChart();
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+drawChart();
+</script>
+</body>
+</html>

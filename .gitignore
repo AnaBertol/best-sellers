@@ -1,0 +1,5 @@
+data_stderr.txt
+temp_script.py
+world.json
+*.pyc
+__pycache__/
