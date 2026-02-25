@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>De onde vêm os best-sellers?</title>
+<title>Where do bestsellers come from?</title>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 <style>
@@ -347,12 +347,12 @@ body{
 <div id="left-col">
 <div id="header">
   <div>
-    <h1>De onde vêm os best-sellers?</h1>
-    <p>Bestsellers internacionais 2013–2022 · Passe o mouse sobre um país e clique para ver de onde vêm seus livros</p>
+    <h1>Where do bestsellers come from?</h1>
+    <p>International bestsellers 2013–2022 · Hover over a country and click to see where its books come from</p>
   </div>
 </div>
 <div id="map-wrap">
-    <div id="loading">Carregando mapa…</div>
+    <div id="loading">Loading map…</div>
     <svg id="map" viewBox="0 0 960 500" preserveAspectRatio="xMidYMid meet">
       <defs>
         <!-- markers são gerados dinamicamente em JS por espessura de arco -->
@@ -365,16 +365,16 @@ body{
       <g id="arcs-g"></g>
     </svg>
     <div id="legend-wrap">
-      <span>+ internacional</span>
+      <span>+ international</span>
       <div id="legend-gradient"></div>
-      <span>+ doméstico</span>
+      <span>+ domestic</span>
     </div>
   </div>
 </div><!-- #left-col -->
 
 <div id="info">
     <div id="info-empty">
-      ← Clique em um país colorido para ver de onde vêm os livros que ele mais lê
+      ← Click on a colored country to see where its books come from
     </div>
     <div id="info-content">
       <div>
@@ -383,7 +383,7 @@ body{
       </div>
       <div id="dom-section" class="stat-bar-wrap">
         <div class="stat-label">
-          <span>Autores domésticos</span>
+          <span>Domestic authors</span>
           <span id="pct-dom-label"></span>
         </div>
         <div class="stat-bar-bg">
@@ -393,14 +393,14 @@ body{
       </div>
       <div class="stat-bar-wrap">
         <div class="stat-label">
-          <span>Autores internacionais</span>
+          <span>International authors</span>
           <span id="pct-intl-label"></span>
         </div>
         <div class="stat-bar-bg">
           <div class="stat-bar-fill" id="pct-intl-bar" style="background:#FFB255"></div>
         </div>
       </div>
-      <div class="section-title">Origem dos livros internacionais</div>
+      <div class="section-title">Origin of international books</div>
       <div id="arc-list"></div>
     </div>
   </div>
@@ -554,8 +554,8 @@ let selectedCountry = null;
         const intlPct = (100 - pct).toFixed(1);
         showTip(event,
           `<strong>${name}</strong><br>` +
-          `<em>${pct.toFixed(1)}%</em> doméstico · <em>${intlPct}%</em> internacional<br>` +
-          `<span style="color:#FF8CA1;font-size:.68rem">▸ clique para ver as origens</span>`
+          `<em>${pct.toFixed(1)}%</em> domestic · <em>${intlPct}%</em> international<br>` +
+          `<span style="color:#FF8CA1;font-size:.68rem">▸ click to see origins</span>`
         );
       })
       .on("mouseleave", hideTip)
@@ -706,7 +706,7 @@ function deselectCountry() {
 //  INFO PANEL
 // ═══════════════════════════════════════════════════════════════════════════
 function buildBookList(books) {
-  if (!books || books.length === 0) return '<div class="book-entry"><span class="book-meta">Sem livros disponíveis</span></div>';
+  if (!books || books.length === 0) return '<div class="book-entry"><span class="book-meta">No books available</span></div>';
   return books.map(b => `
     <div class="book-entry">
       <span class="book-title">${b.t}</span>
@@ -726,7 +726,7 @@ function updateInfoPanel(name, arcData) {
 
   document.getElementById("info-country").textContent = name;
   document.getElementById("info-sub").textContent =
-    `${pct.toFixed(1)}% dos livros são de autores nacionais`;
+    `${pct.toFixed(1)}% of books are by domestic authors`;
 
   document.getElementById("pct-dom-label").textContent = pct.toFixed(1) + "%";
   document.getElementById("pct-dom-bar").style.width  = pct + "%";
@@ -745,7 +745,7 @@ function updateInfoPanel(name, arcData) {
   listEl.innerHTML = "";
 
   if (!arcData || arcData.length === 0) {
-    listEl.innerHTML = '<div id="no-arcs">Sem dados de origem disponíveis</div>';
+    listEl.innerHTML = '<div id="no-arcs">No origin data available</div>';
     return;
   }
 
